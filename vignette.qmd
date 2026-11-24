@@ -1,7 +1,49 @@
 ---
-title: "vignette"
+title: "Distance-Weighted K-Nearest Neighbors Classification in R"
+author: "Miles Reynolds, Nic, Ruixi, Katrina, Daniel"
 format:
   html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
     embed-resources: true
+execute:
+  warning: false
+  message: false
 ---
 
+Brief description of general topic of vignette
+
+## Conceptual Overview
+
+### Standard K-Nearest Neighbors
+- Explain equal-vote KNN and how distant neighbors hurt accuracy near boundaries or at large $k$.
+
+### Distance-Weighted Voting
+- Introduce inverse-distance weighting ($w_i = 1/d_i$) and how closer neighbors get more voting power
+
+### Feature Scaling & Distance Metrics
+- Explain why numeric features must be normalized before computing Euclidean distance. (Some variables are 0-1 while others are not bounded)
+
+## Code Demonstration: Spotify Genre Classification
+
+### Data Description & Setup
+- Load R packages and the 2,700-row balanced Spotify sample (9 audio predictors + metadata IDs)
+
+### Exploratory Data Analysis
+- Some plots looking at the characteristics of the data
+
+### Preprocessing & Train/Test Split
+- Do an 80/20 stratified split in R, set metadata columns to "ID" role, and apply step_normalize()
+
+### Model Specification & Hyperparameter Tuning
+- Tune neighbors ($k$) and weight_func ("rectangular" vs. "inv") using 5-fold cross-validation (We are comparing "rectangular" (uniform) vs. "inv" (inverse-distance) across multiple values of $k$.)
+
+### Comparing Uniform vs. Distance-Weighted Accuracy
+- Plot CV accuracy across $k$ for both weighting methods and highlight where one wins (ideally same graph)
+
+### Final Model Evaluation
+- Fit the winning model on the test set, report final accuracy/AUC, and plot a confusion matrix
+
+## Conclusion & Limitations
+- Summarize key takeaways, when to use weighted KNN, and practical limitations (prediction speed, irrelevant features)
