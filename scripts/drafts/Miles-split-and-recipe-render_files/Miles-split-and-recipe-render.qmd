@@ -1,0 +1,46 @@
+---
+title: "split-and-recipe-render"
+format: html
+---
+
+#For the final qmd
+Before fitting any models, we convert `playlist_genre` to a factor and partition the dataset using an 80/20 stratified train–test split. Stratifying by genre guarantees that all six classes remain evenly balanced, allocating 360 songs per genre to the training set (2,160 total) and 90 songs per genre to the test set (540 total). Locking away the test set at this stage helps prevent data leakage during hyperparameter tuning.
+
+Next, we define a `recipes` preprocessing pipeline on the training data. We assign `"ID"` roles to `track_id`, `track_name`, and `track_artist` so they remain attached for reference while still being excluded from Euclidean distance calculations. We apply `step_normalize()` to standardize all nine numeric audio predictors to mean 0 and standard deviation 1. Finally, we partition the training set into 5 stratified cross-validation folds (`vfold_cv`) so candidate models can be compared fairly before touching the test set.
+
+"
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(kknn)
+
+#REMOVE ABOVE PACKAGES AND BELOW CSV READ WHEN IMPORTING TO FINAL
+spotify <- read_csv("../../data/processed/spotify_sample.csv")
+
+spotify <- spotify |>
+  mutate(playlist_genre = as.factor(playlist_genre))
+
+# 80/20 stratified train/test split
+set.seed(197)
+spotify_split <- initial_split(spotify, prop = 0.80, strata = playlist_genre)
+spotify_train <- training(spotify_split)
+spotify_test  <- testing(spotify_split)
+
+#Verify balanced class counts across splits
+bind_rows(
+  spotify_train |> count(playlist_genre) |> mutate(Split = "Training (80%)"),
+  spotify_test  |> count(playlist_genre) |> mutate(Split = "Testing (20%)")
+) |>
+  pivot_wider(names_from = Split, values_from = n) |>
+  knitr::kable(caption = "Stratified class counts across training and testing sets")
+
+#Preprocessing recipe: excluding metadata IDs and standardizing numeric predictors
+knn_rec <- recipe(playlist_genre ~ ., data = spotify_train) |>
+  update_role(track_id, track_name, track_artist, new_role = "ID") |>
+  step_normalize(all_numeric_predictors())
+
+# 5-fold stratified cross-validation resamples
+set.seed(169)
+spotify_folds <- vfold_cv(spotify_train, v = 5, strata = playlist_genre)
+```
+"
