@@ -1,0 +1,56 @@
+---
+title: "Inverse-Distance KNN Draft"
+format: html
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: draft-setup
+#| include: false
+
+# STANDALONE DRAFT SETUP (Omit this chunk when pasting into final vignette.qmd)
+setwd(here::here())
+source("scripts/drafts/split-and-recipe.R")
+```
+
+### Inverse-Distance Weighted KNN Models ($k = 3, 5, 10$)
+
+To evaluate how neighborhood size affects distance-weighted classification, we specify a KNN classifier using the `kknn` engine with `weight_func = "inv"`, which weights each neighbor's vote inversely by its distance ($w_i = 1 / d_i$). We pair this specification with `knn_rec` inside a `tidymodels` workflow and evaluate $k \in \{3, 5, 10\}$ across our 5 cross-validation folds using classification accuracy and multi-class ROC-AUC.
+
+```{r}
+
+fit_inv_knn <- function(k_val) {
+  spec <- nearest_neighbor(neighbors = k_val, weight_func = "inv") |>
+    set_engine("kknn") |>
+    set_mode("classification")
+
+  wf <- workflow() |>
+    add_recipe(knn_rec) |>
+    add_model(spec)
+
+  fit_resamples(
+    wf,
+    resamples = spotify_folds,
+    metrics = metric_set(accuracy, roc_auc)
+  ) |>
+    collect_metrics() |>
+    mutate(neighbors = k_val, weight_func = "inv")
+}
+
+inv_results <- bind_rows(
+  fit_inv_knn(3),
+  fit_inv_knn(5),
+  fit_inv_knn(10)
+) |>
+  select(neighbors, weight_func, .metric, mean, std_err)
+
+inv_results |>
+  knitr::kable(
+    digits = 4,
+    caption = "5-fold CV performance for inverse-distance KNN (k = 3, 5, 10)"
+  )
+```
+
+Across the candidate neighborhood sizes, 5-fold cross-validation performance improves steadily as $k$ increases from 3 to 10. Specifically, $k = 10$ achieves the highest mean classification accuracy (`0.4551`, SE = `0.0033`) and multi-class ROC-AUC (`0.7654`, SE = `0.0044`), outperforming both $k = 3$ (`0.4032` accuracy, `0.7040` ROC-AUC) and $k = 5$ (`0.4171` accuracy, `0.7325` ROC-AUC). Because inverse-distance weighting downweights more distant points, increasing the neighborhood size to $k = 10$ reduces prediction variance in overlapping regions of the audio feature space while preserving sensitivity to the closest neighbors.
