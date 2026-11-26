@@ -19,7 +19,9 @@ source("scripts/drafts/split-and-recipe.R")
 ```{r}
 #| label: knn-config
 
-#CHANGE THESE LINES TO SWITCH WEIGHTING
+#CHANGE THESE LINES TO SWITCH WEIGHTING 
+#rectangular to inverse
+#standard (rectangular) to inverse
 weighting    <- "rectangular"                       
 weight_label <- "standard (rectangular)"            
 
