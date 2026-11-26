@@ -1,0 +1,122 @@
+---
+title: "Weighted KNN with Tuned Neighborhood Size"
+format: html
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: draft-setup
+#| include: false
+
+#omit this chunk when pasting into final qmd
+setwd(here::here())
+source("scripts/drafts/split-and-recipe.R")
+#Provides: spotify_split, spotify_train, spotify_test, knn_rec, spotify_folds
+```
+
+```{r}
+#| label: knn-config
+
+#CHANGE THESE LINES TO SWITCH WEIGHTING
+weighting    <- "rectangular"                       
+weight_label <- "standard (rectangular)"            
+
+k_values <- c(5, 15, 25, 31, 51, 71, 101)
+```
+
+###  Standard KNN with Tuned Neighborhood Size
+
+We fit a standard K-nearest neighbors classifier using the kknn engine with `weight_func = "rectangular". We then tune the number of neighbors. Each candidate is evaluated using 5-fold stratified cross-validation on the training set only, with classification accuracy and multi-class ROC-AUC as metrics.
+
+```{r}
+#| label: knn-tune
+
+knn_spec <- nearest_neighbor(neighbors = tune(), weight_func = weighting) |>
+  set_engine("kknn") |>
+  set_mode("classification")
+
+knn_wf <- workflow() |>
+  add_recipe(knn_rec) |>
+  add_model(knn_spec)
+
+knn_grid <- tibble(neighbors = k_values)
+
+set.seed(197)
+knn_tuned <- tune_grid(
+  knn_wf,
+  resamples = spotify_folds,
+  grid = knn_grid,
+  metrics = metric_set(accuracy, roc_auc)
+)
+```
+
+```{r}
+#| label: knn-table
+
+knn_results <- collect_metrics(knn_tuned) |>
+  select(neighbors, .metric, mean, std_err) |>
+  pivot_wider(names_from = .metric, values_from = c(mean, std_err)) |>
+  arrange(neighbors) |>
+  select(
+    k = neighbors,
+    mean_accuracy = mean_accuracy,
+    se_accuracy = std_err_accuracy,
+    mean_roc_auc = mean_roc_auc,
+    se_roc_auc = std_err_roc_auc
+  )
+
+knn_results |>
+  knitr::kable(
+    digits = 4,
+    caption = paste0("5-fold CV performance for ", weight_label, " KNN by k")
+  )
+```
+
+```{r}
+#| label: knn-plot
+#| fig-cap: !expr paste0("Cross-validated accuracy and ROC-AUC across values of k (", weight_label, " weighting)")
+
+collect_metrics(knn_tuned) |>
+  ggplot(aes(x = neighbors, y = mean)) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean - std_err, ymax = mean + std_err), width = 2) +
+  facet_wrap(~ .metric, scales = "free_y") +
+  scale_x_continuous(breaks = k_values) +
+  labs(x = "Number of neighbors (k)", y = "Mean 5-fold CV estimate") +
+  theme_minimal()
+```
+
+```{r}
+#| label: knn-select
+
+best_k <- select_best(knn_tuned, metric = "roc_auc")
+best_row <- knn_results |> filter(k == best_k$neighbors)
+```
+
+Using mean ROC-AUC as the selection criterion, cross-validation favors k = 51 for the model, which achieves a mean ROC-AUC of 0.792 (and a mean accuracy of 0.461.
+
+### Final Model Evaluation on the Test Set
+
+We finalize the workflow with the selected k, refit it on the full training set, and evaluate it once on the test set to obtain an unbiased estimate of performance.
+
+```{r}
+#| label: knn-final
+
+final_knn_wf <- finalize_workflow(knn_wf, best_k)
+
+final_knn_fit <- last_fit(
+  final_knn_wf,
+  spotify_split,
+  metrics = metric_set(accuracy, roc_auc)
+)
+
+collect_metrics(final_knn_fit) |>
+  select(.metric, .estimate) |>
+  knitr::kable(
+    digits = 4,
+    caption = paste0("Test-set performance for ", weight_label, " KNN (k = ", best_k$neighbors, ")")
+  )
+```
