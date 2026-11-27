@@ -133,94 +133,178 @@ window.Quarto = {
 </header>
 
 
-<section id="inverse-distance-weighted-knn-models-k-3-5-10" class="level3">
-<h3 class="anchored" data-anchor-id="inverse-distance-weighted-knn-models-k-3-5-10">Inverse-Distance Weighted KNN Models (<span class="math inline">\(k = 3, 5, 10\)</span>)</h3>
-<p>To evaluate how neighborhood size affects distance-weighted classification, we specify a KNN classifier using the <code>kknn</code> engine with <code>weight_func = "inv"</code>, which weights each neighbor’s vote inversely by its distance (<span class="math inline">\(w_i = 1 / d_i\)</span>). We pair this specification with <code>knn_rec</code> inside a <code>tidymodels</code> workflow and evaluate <span class="math inline">\(k \in \{3, 5, 10\}\)</span> across our 5 cross-validation folds using classification accuracy and multi-class ROC-AUC.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>fit_inv_knn <span class="ot">&lt;-</span> <span class="cf">function</span>(k_val) {</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  spec <span class="ot">&lt;-</span> <span class="fu">nearest_neighbor</span>(<span class="at">neighbors =</span> k_val, <span class="at">weight_func =</span> <span class="st">"inv"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">set_engine</span>(<span class="st">"kknn"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">set_mode</span>(<span class="st">"classification"</span>)</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  wf <span class="ot">&lt;-</span> <span class="fu">workflow</span>() <span class="sc">|&gt;</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">add_recipe</span>(knn_rec) <span class="sc">|&gt;</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">add_model</span>(spec)</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fit_resamples</span>(</span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    wf,</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">resamples =</span> spotify_folds,</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">metrics =</span> <span class="fu">metric_set</span>(accuracy, roc_auc)</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">collect_metrics</span>() <span class="sc">|&gt;</span></span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">neighbors =</span> k_val, <span class="at">weight_func =</span> <span class="st">"inv"</span>)</span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>inv_results <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(</span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fit_inv_knn</span>(<span class="dv">3</span>),</span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fit_inv_knn</span>(<span class="dv">5</span>),</span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fit_inv_knn</span>(<span class="dv">10</span>)</span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
-<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(neighbors, weight_func, .metric, mean, std_err)</span>
-<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>inv_results <span class="sc">|&gt;</span></span>
-<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
-<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    <span class="at">digits =</span> <span class="dv">4</span>,</span>
-<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"5-fold CV performance for inverse-distance KNN (k = 3, 5, 10)"</span></span>
-<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>  )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>weighting    <span class="ot">&lt;-</span> <span class="st">"inv"</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>weight_label <span class="ot">&lt;-</span> <span class="st">"inverse-distance"</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>k_values <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">5</span>, <span class="dv">15</span>, <span class="dv">25</span>, <span class="dv">31</span>, <span class="dv">51</span>, <span class="dv">71</span>, <span class="dv">101</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="inverse-distance-weighted-knn-with-tuned-neighborhood-size" class="level3">
+<h3 class="anchored" data-anchor-id="inverse-distance-weighted-knn-with-tuned-neighborhood-size">Inverse-Distance Weighted KNN with Tuned Neighborhood Size</h3>
+<p>To evaluate how neighborhood size affects distance-weighted classification, we specify a KNN classifier using the <code>kknn</code> engine with <code>weight_func = "inv"</code>, which weights each neighbor’s vote inversely by its Euclidean distance from the query song (<span class="math inline">\(w_i \propto 1 / d_i\)</span>). We pair this specification with <code>knn_rec</code> inside a <code>tidymodels</code> workflow and tune <span class="math inline">\(k \in \{5, 15, 25, 31, 51, 71, 101\}\)</span> across our 5 stratified cross-validation folds on the training set using classification accuracy and multi-class ROC-AUC.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>inv_spec <span class="ot">&lt;-</span> <span class="fu">nearest_neighbor</span>(<span class="at">neighbors =</span> <span class="fu">tune</span>(), <span class="at">weight_func =</span> weighting) <span class="sc">|&gt;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set_engine</span>(<span class="st">"kknn"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set_mode</span>(<span class="st">"classification"</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>inv_wf <span class="ot">&lt;-</span> <span class="fu">workflow</span>() <span class="sc">|&gt;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_recipe</span>(knn_rec) <span class="sc">|&gt;</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_model</span>(inv_spec)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>inv_grid <span class="ot">&lt;-</span> <span class="fu">tibble</span>(<span class="at">neighbors =</span> k_values)</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">169</span>)</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>inv_tuned <span class="ot">&lt;-</span> <span class="fu">tune_grid</span>(</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>  inv_wf,</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">resamples =</span> spotify_folds,</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">grid =</span> inv_grid,</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">metrics =</span> <span class="fu">metric_set</span>(accuracy, roc_auc)</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>inv_results <span class="ot">&lt;-</span> <span class="fu">collect_metrics</span>(inv_tuned) <span class="sc">|&gt;</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(neighbors, .metric, mean, std_err) <span class="sc">|&gt;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_wider</span>(<span class="at">names_from =</span> .metric, <span class="at">values_from =</span> <span class="fu">c</span>(mean, std_err)) <span class="sc">|&gt;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(neighbors) <span class="sc">|&gt;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">k =</span> neighbors,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">mean_accuracy =</span> mean_accuracy,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">se_accuracy =</span> std_err_accuracy,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">mean_roc_auc =</span> mean_roc_auc,</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">se_roc_auc =</span> std_err_roc_auc</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>inv_results <span class="sc">|&gt;</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">digits =</span> <span class="dv">4</span>,</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="fu">paste0</span>(<span class="st">"5-fold CV performance for "</span>, weight_label, <span class="st">" KNN by k"</span>)</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>  )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
-<caption>5-fold CV performance for inverse-distance KNN (k = 3, 5, 10)</caption>
+<caption>5-fold CV performance for inverse-distance KNN by k</caption>
 <thead>
 <tr class="header">
-<th style="text-align: right;">neighbors</th>
-<th style="text-align: left;">weight_func</th>
-<th style="text-align: left;">.metric</th>
-<th style="text-align: right;">mean</th>
-<th style="text-align: right;">std_err</th>
+<th style="text-align: right;">k</th>
+<th style="text-align: right;">mean_accuracy</th>
+<th style="text-align: right;">se_accuracy</th>
+<th style="text-align: right;">mean_roc_auc</th>
+<th style="text-align: right;">se_roc_auc</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td style="text-align: right;">3</td>
-<td style="text-align: left;">inv</td>
-<td style="text-align: left;">accuracy</td>
-<td style="text-align: right;">0.4032</td>
-<td style="text-align: right;">0.0128</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">3</td>
-<td style="text-align: left;">inv</td>
-<td style="text-align: left;">roc_auc</td>
-<td style="text-align: right;">0.7040</td>
-<td style="text-align: right;">0.0057</td>
-</tr>
-<tr class="odd">
 <td style="text-align: right;">5</td>
-<td style="text-align: left;">inv</td>
-<td style="text-align: left;">accuracy</td>
 <td style="text-align: right;">0.4171</td>
 <td style="text-align: right;">0.0094</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">5</td>
-<td style="text-align: left;">inv</td>
-<td style="text-align: left;">roc_auc</td>
 <td style="text-align: right;">0.7325</td>
 <td style="text-align: right;">0.0045</td>
 </tr>
+<tr class="even">
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">0.4657</td>
+<td style="text-align: right;">0.0068</td>
+<td style="text-align: right;">0.7750</td>
+<td style="text-align: right;">0.0050</td>
+</tr>
 <tr class="odd">
-<td style="text-align: right;">10</td>
-<td style="text-align: left;">inv</td>
-<td style="text-align: left;">accuracy</td>
-<td style="text-align: right;">0.4551</td>
-<td style="text-align: right;">0.0033</td>
+<td style="text-align: right;">25</td>
+<td style="text-align: right;">0.4736</td>
+<td style="text-align: right;">0.0115</td>
+<td style="text-align: right;">0.7867</td>
+<td style="text-align: right;">0.0052</td>
 </tr>
 <tr class="even">
-<td style="text-align: right;">10</td>
-<td style="text-align: left;">inv</td>
+<td style="text-align: right;">31</td>
+<td style="text-align: right;">0.4722</td>
+<td style="text-align: right;">0.0095</td>
+<td style="text-align: right;">0.7913</td>
+<td style="text-align: right;">0.0050</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">51</td>
+<td style="text-align: right;">0.4657</td>
+<td style="text-align: right;">0.0094</td>
+<td style="text-align: right;">0.7951</td>
+<td style="text-align: right;">0.0053</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">71</td>
+<td style="text-align: right;">0.4736</td>
+<td style="text-align: right;">0.0090</td>
+<td style="text-align: right;">0.7945</td>
+<td style="text-align: right;">0.0056</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">101</td>
+<td style="text-align: right;">0.4546</td>
+<td style="text-align: right;">0.0130</td>
+<td style="text-align: right;">0.7944</td>
+<td style="text-align: right;">0.0061</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">collect_metrics</span>(inv_tuned) <span class="sc">|&gt;</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> neighbors, <span class="at">y =</span> mean)) <span class="sc">+</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>() <span class="sc">+</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>() <span class="sc">+</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_errorbar</span>(<span class="fu">aes</span>(<span class="at">ymin =</span> mean <span class="sc">-</span> std_err, <span class="at">ymax =</span> mean <span class="sc">+</span> std_err), <span class="at">width =</span> <span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> .metric, <span class="at">scales =</span> <span class="st">"free_y"</span>) <span class="sc">+</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_x_continuous</span>(<span class="at">breaks =</span> k_values) <span class="sc">+</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Number of neighbors (k)"</span>, <span class="at">y =</span> <span class="st">"Mean 5-fold CV estimate"</span>) <span class="sc">+</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="Miles-inv-knn_files/figure-html/inv-plot-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption>Cross-validated accuracy and ROC-AUC across values of k (inverse-distance weighting)</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>best_inv_k <span class="ot">&lt;-</span> <span class="fu">select_best</span>(inv_tuned, <span class="at">metric =</span> <span class="st">"roc_auc"</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>best_inv_row <span class="ot">&lt;-</span> inv_results <span class="sc">|&gt;</span> <span class="fu">filter</span>(k <span class="sc">==</span> best_inv_k<span class="sc">$</span>neighbors)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Using mean ROC-AUC as the selection criterion, cross-validation favors <span class="math inline">\(k = 51\)</span> for the inverse-distance model, achieving a mean ROC-AUC of 0.7951 (SE = 0.0053) and a mean accuracy of 0.4657 (SE = 0.0094). In overlapping regions of the audio feature space, expanding the neighborhood size stabilizes predictions against isolated outlier songs, while inverse-distance weighting ensures that the closest neighbors still carry the greatest voting influence rather than being outvoted by points near the outer edge of the neighborhood.</p>
+</section>
+<section id="final-model-evaluation-on-the-test-set" class="level3">
+<h3 class="anchored" data-anchor-id="final-model-evaluation-on-the-test-set">Final Model Evaluation on the Test Set</h3>
+<p>We finalize the workflow with the selected <span class="math inline">\(k\)</span>, refit it on the full training set, and evaluate it once on the test set to obtain an unbiased estimate of performance.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>final_inv_wf <span class="ot">&lt;-</span> <span class="fu">finalize_workflow</span>(inv_wf, best_inv_k)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>final_inv_fit <span class="ot">&lt;-</span> <span class="fu">last_fit</span>(</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  final_inv_wf,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  spotify_split,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">metrics =</span> <span class="fu">metric_set</span>(accuracy, roc_auc)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="fu">collect_metrics</span>(final_inv_fit) <span class="sc">|&gt;</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(.metric, .estimate) <span class="sc">|&gt;</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">digits =</span> <span class="dv">4</span>,</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="fu">paste0</span>(<span class="st">"Test-set performance for "</span>, weight_label, <span class="st">" KNN (k = "</span>, best_inv_k<span class="sc">$</span>neighbors, <span class="st">")"</span>)</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>  )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<caption>Test-set performance for inverse-distance KNN (k = 51)</caption>
+<thead>
+<tr class="header">
+<th style="text-align: left;">.metric</th>
+<th style="text-align: right;">.estimate</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">accuracy</td>
+<td style="text-align: right;">0.4481</td>
+</tr>
+<tr class="even">
 <td style="text-align: left;">roc_auc</td>
-<td style="text-align: right;">0.7654</td>
-<td style="text-align: right;">0.0044</td>
+<td style="text-align: right;">0.7831</td>
 </tr>
 </tbody>
 </table>

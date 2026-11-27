@@ -15,42 +15,107 @@ setwd(here::here())
 source("scripts/drafts/split-and-recipe.R")
 ```
 
-### Inverse-Distance Weighted KNN Models ($k = 3, 5, 10$)
+```{r}
+#| label: inv-config
 
-To evaluate how neighborhood size affects distance-weighted classification, we specify a KNN classifier using the `kknn` engine with `weight_func = "inv"`, which weights each neighbor's vote inversely by its distance ($w_i = 1 / d_i$). We pair this specification with `knn_rec` inside a `tidymodels` workflow and evaluate $k \in \{3, 5, 10\}$ across our 5 cross-validation folds using classification accuracy and multi-class ROC-AUC.
+weighting    <- "inv"
+weight_label <- "inverse-distance"
+
+k_values <- c(5, 15, 25, 31, 51, 71, 101)
+```
+
+### Inverse-Distance Weighted KNN with Tuned Neighborhood Size
+
+To evaluate how neighborhood size affects distance-weighted classification, we specify a KNN classifier using the `kknn` engine with `weight_func = "inv"`, which weights each neighbor's vote inversely by its Euclidean distance from the query song ($w_i \propto 1 / d_i$). We pair this specification with `knn_rec` inside a `tidymodels` workflow and tune $k \in \{5, 15, 25, 31, 51, 71, 101\}$ across our 5 stratified cross-validation folds on the training set using classification accuracy and multi-class ROC-AUC.
 
 ```{r}
+#| label: inv-tune
 
-fit_inv_knn <- function(k_val) {
-  spec <- nearest_neighbor(neighbors = k_val, weight_func = "inv") |>
-    set_engine("kknn") |>
-    set_mode("classification")
+inv_spec <- nearest_neighbor(neighbors = tune(), weight_func = weighting) |>
+  set_engine("kknn") |>
+  set_mode("classification")
 
-  wf <- workflow() |>
-    add_recipe(knn_rec) |>
-    add_model(spec)
+inv_wf <- workflow() |>
+  add_recipe(knn_rec) |>
+  add_model(inv_spec)
 
-  fit_resamples(
-    wf,
-    resamples = spotify_folds,
-    metrics = metric_set(accuracy, roc_auc)
-  ) |>
-    collect_metrics() |>
-    mutate(neighbors = k_val, weight_func = "inv")
-}
+inv_grid <- tibble(neighbors = k_values)
 
-inv_results <- bind_rows(
-  fit_inv_knn(3),
-  fit_inv_knn(5),
-  fit_inv_knn(10)
-) |>
-  select(neighbors, weight_func, .metric, mean, std_err)
+set.seed(169)
+inv_tuned <- tune_grid(
+  inv_wf,
+  resamples = spotify_folds,
+  grid = inv_grid,
+  metrics = metric_set(accuracy, roc_auc)
+)
+```
+
+```{r}
+#| label: inv-table
+
+inv_results <- collect_metrics(inv_tuned) |>
+  select(neighbors, .metric, mean, std_err) |>
+  pivot_wider(names_from = .metric, values_from = c(mean, std_err)) |>
+  arrange(neighbors) |>
+  select(
+    k = neighbors,
+    mean_accuracy = mean_accuracy,
+    se_accuracy = std_err_accuracy,
+    mean_roc_auc = mean_roc_auc,
+    se_roc_auc = std_err_roc_auc
+  )
 
 inv_results |>
   knitr::kable(
     digits = 4,
-    caption = "5-fold CV performance for inverse-distance KNN (k = 3, 5, 10)"
+    caption = paste0("5-fold CV performance for ", weight_label, " KNN by k")
   )
 ```
 
-Across the candidate neighborhood sizes, 5-fold cross-validation performance improves steadily as $k$ increases from 3 to 10. Specifically, $k = 10$ achieves the highest mean classification accuracy (`0.4551`, SE = `0.0033`) and multi-class ROC-AUC (`0.7654`, SE = `0.0044`), outperforming both $k = 3$ (`0.4032` accuracy, `0.7040` ROC-AUC) and $k = 5$ (`0.4171` accuracy, `0.7325` ROC-AUC). Because inverse-distance weighting downweights more distant points, increasing the neighborhood size to $k = 10$ reduces prediction variance in overlapping regions of the audio feature space while preserving sensitivity to the closest neighbors.
+```{r}
+#| label: inv-plot
+#| fig-cap: !expr paste0("Cross-validated accuracy and ROC-AUC across values of k (", weight_label, " weighting)")
+
+collect_metrics(inv_tuned) |>
+  ggplot(aes(x = neighbors, y = mean)) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean - std_err, ymax = mean + std_err), width = 2) +
+  facet_wrap(~ .metric, scales = "free_y") +
+  scale_x_continuous(breaks = k_values) +
+  labs(x = "Number of neighbors (k)", y = "Mean 5-fold CV estimate") +
+  theme_minimal()
+```
+
+```{r}
+#| label: inv-select
+
+best_inv_k <- select_best(inv_tuned, metric = "roc_auc")
+best_inv_row <- inv_results |> filter(k == best_inv_k$neighbors)
+```
+
+Using mean ROC-AUC as the selection criterion, cross-validation favors $k = `r best_inv_k$neighbors`$ for the inverse-distance model, achieving a mean ROC-AUC of `r round(best_inv_row$mean_roc_auc, 4)` (SE = `r round(best_inv_row$se_roc_auc, 4)`) and a mean accuracy of `r round(best_inv_row$mean_accuracy, 4)` (SE = `r round(best_inv_row$se_accuracy, 4)`). In overlapping regions of the audio feature space, expanding the neighborhood size stabilizes predictions against isolated outlier songs, while inverse-distance weighting ensures that the closest neighbors still carry the greatest voting influence rather than being outvoted by points near the outer edge of the neighborhood.
+
+### Final Model Evaluation on the Test Set
+
+We finalize the workflow with the selected $k$, refit it on the full training set, and evaluate it once on the test set to obtain an unbiased estimate of performance.
+
+```{r}
+#| label: inv-final
+
+final_inv_wf <- finalize_workflow(inv_wf, best_inv_k)
+
+final_inv_fit <- last_fit(
+  final_inv_wf,
+  spotify_split,
+  metrics = metric_set(accuracy, roc_auc)
+)
+
+collect_metrics(final_inv_fit) |>
+  select(.metric, .estimate) |>
+  knitr::kable(
+    digits = 4,
+    caption = paste0("Test-set performance for ", weight_label, " KNN (k = ", best_inv_k$neighbors, ")")
+  )
+```
+Evaluated on the held-out test set, the finalized inverse-distance KNN model ($k = 51$) achieves a multi-class ROC-AUC of 0.7831 and a classification accuracy of 0.4481, confirming that cross-validation performance generalizes well to unseen songs.
